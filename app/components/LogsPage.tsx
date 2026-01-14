@@ -52,20 +52,22 @@ export default function LogsPage({ onLogout, backendUrl }: LogsPageProps) {
     try {
       const res = await axios.get(`${backendUrl}/esp32/status`);
       setEsp32Enabled(res.data.esp32Enabled);
-      setIsOnline(res.data.isOnline);
+      // Only consider online if ESP32 is enabled AND online
+      // If disabled, ESP32 may briefly wake up to check status but should be shown as offline
+      setIsOnline(res.data.esp32Enabled && res.data.isOnline);
     } catch (error) {
       console.error("Error fetching ESP32 status:", error);
       setIsOnline(false);
     }
   };
 
-  // Clear countdown when ESP32 comes online
+  // Clear countdown when ESP32 comes online or when disabled
   useEffect(() => {
-    if (isOnline && wakeUpCountdown !== null) {
+    if ((isOnline || !esp32Enabled) && wakeUpCountdown !== null) {
       setWakeUpCountdown(null);
       setWakeUpStartTime(null);
     }
-  }, [isOnline, wakeUpCountdown]);
+  }, [isOnline, esp32Enabled, wakeUpCountdown]);
 
   // Countdown timer for wake-up
   useEffect(() => {
@@ -118,11 +120,11 @@ export default function LogsPage({ onLogout, backendUrl }: LogsPageProps) {
         setEsp32Enabled(res.data.esp32Enabled);
         
         if (action === "on") {
-          // Start wake-up countdown
+          // Start wake-up countdown (but don't show seconds)
           setWakeUpCountdown(WAKE_UP_DURATION);
           setWakeUpStartTime(Date.now());
         } else {
-          // Turning off - clear countdown
+          // Turning off - clear countdown and force offline
           setWakeUpCountdown(null);
           setWakeUpStartTime(null);
           setIsOnline(false);
@@ -182,7 +184,7 @@ export default function LogsPage({ onLogout, backendUrl }: LogsPageProps) {
                 }`}
               >
                 {wakeUpCountdown !== null && wakeUpCountdown > 0
-                  ? `Waking up... (${wakeUpCountdown}s)`
+                  ? "Waking up..."
                   : isOnline
                   ? "Turn ESP32 OFF"
                   : "Turn ESP32 ON"}
@@ -221,7 +223,7 @@ export default function LogsPage({ onLogout, backendUrl }: LogsPageProps) {
                   {isOnline 
                     ? "ONLINE" 
                     : wakeUpCountdown !== null && wakeUpCountdown > 0
-                    ? `WAKING UP (${wakeUpCountdown}s)`
+                    ? "WAKING UP"
                     : "OFFLINE / IN DEEP SLEEP"}
                 </span>
               </span>
@@ -230,7 +232,7 @@ export default function LogsPage({ onLogout, backendUrl }: LogsPageProps) {
               {isOnline 
                 ? "Active and monitoring" 
                 : wakeUpCountdown !== null && wakeUpCountdown > 0
-                ? `Will turn on in ${wakeUpCountdown} seconds`
+                ? "ESP32 is waking up"
                 : "Powered off or disconnected"}
             </span>
           </div>
