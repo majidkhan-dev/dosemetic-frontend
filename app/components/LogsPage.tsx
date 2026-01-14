@@ -110,7 +110,7 @@ export default function LogsPage({ onLogout, backendUrl }: LogsPageProps) {
                   setPin(e.target.value);
                   setPinError("");
                 }}
-                placeholder="Enter PIN to disable buzzer (2 seconds)"
+                placeholder="Enter PIN to disable buzzer (3.5 seconds)"
                 className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all duration-200 outline-none"
                 maxLength={10}
               />
@@ -130,7 +130,7 @@ export default function LogsPage({ onLogout, backendUrl }: LogsPageProps) {
           )}
           {pinSuccess && (
             <p className="mt-2 text-sm text-green-600 animate-fade-in">
-              ✓ Buzzer disabled for 2 seconds
+              ✓ Buzzer disabled for 3.5 seconds
             </p>
           )}
         </div>
