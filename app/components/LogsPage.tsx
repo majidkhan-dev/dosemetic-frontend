@@ -20,6 +20,20 @@ export default function LogsPage({ onLogout, backendUrl }: LogsPageProps) {
   const [esp32Enabled, setEsp32Enabled] = useState(true);
   const [collapsedSessions, setCollapsedSessions] = useState<Set<number>>(new Set());
 
+  // Format timestamp to Pakistan timezone (Asia/Karachi)
+  const formatPakistanTime = (timestamp: number) => {
+    return new Date(timestamp * 1000).toLocaleString("en-PK", {
+      timeZone: "Asia/Karachi",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+      hour12: false
+    });
+  };
+
   const fetchLogs = async () => {
     try {
       const res = await axios.get(`${backendUrl}/logs`);
@@ -161,9 +175,14 @@ export default function LogsPage({ onLogout, backendUrl }: LogsPageProps) {
         {/* Logs Section */}
         <div className="bg-white rounded-xl shadow-lg p-6 border border-gray-200">
           <div className="flex justify-between items-center mb-6">
-            <h2 className="text-xl font-semibold text-gray-800">
-              Detection Logs
-            </h2>
+            <div>
+              <h2 className="text-xl font-semibold text-gray-800">
+                Detection Logs
+              </h2>
+              <p className="text-xs text-gray-500 mt-1">
+                Times displayed in Pakistan Standard Time (PKT)
+              </p>
+            </div>
             <span className="text-sm text-gray-500">
               Total: {logs.length} entries
             </span>
@@ -270,7 +289,7 @@ export default function LogsPage({ onLogout, backendUrl }: LogsPageProps) {
                                   </span>
                                 </td>
                                 <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-600">
-                                  {new Date(log.timestamp * 1000).toLocaleString()}
+                                  {formatPakistanTime(log.timestamp)}
                                 </td>
                               </tr>
                             ))}
