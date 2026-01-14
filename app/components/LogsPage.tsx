@@ -343,7 +343,11 @@ export default function LogsPage({ onLogout, backendUrl }: LogsPageProps) {
                         </button>
                       </div>
                     </div>
-                    {!isCollapsed && (
+                    <div 
+                      className={`overflow-hidden transition-all duration-500 ease-in-out ${
+                        isCollapsed ? 'max-h-0 opacity-0' : 'max-h-[2000px] opacity-100'
+                      }`}
+                    >
                       <div className="overflow-x-auto">
                         <table className="w-full">
                           <thead className="bg-gray-50">
@@ -387,7 +391,7 @@ export default function LogsPage({ onLogout, backendUrl }: LogsPageProps) {
                           </tbody>
                         </table>
                       </div>
-                    )}
+                    </div>
                   </div>
                 );
               })}
