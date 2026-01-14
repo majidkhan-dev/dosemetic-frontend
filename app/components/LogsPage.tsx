@@ -17,10 +17,8 @@ type Log = {
 
 export default function LogsPage({ onLogout, backendUrl }: LogsPageProps) {
   const [logs, setLogs] = useState<Log[]>([]);
-  const [pin, setPin] = useState("");
-  const [pinError, setPinError] = useState("");
-  const [pinSuccess, setPinSuccess] = useState(false);
-  const [isLoading, setIsLoading] = useState(false);
+  const [esp32Enabled, setEsp32Enabled] = useState(true);
+  const [collapsedSessions, setCollapsedSessions] = useState<Set<number>>(new Set());
 
   const fetchLogs = async () => {
     try {
@@ -31,34 +29,61 @@ export default function LogsPage({ onLogout, backendUrl }: LogsPageProps) {
     }
   };
 
+  const fetchEsp32Status = async () => {
+    try {
+      const res = await axios.get(`${backendUrl}/esp32/status`);
+      setEsp32Enabled(res.data.esp32Enabled);
+    } catch (error) {
+      console.error("Error fetching ESP32 status:", error);
+    }
+  };
+
   useEffect(() => {
     fetchLogs();
-    const i = setInterval(fetchLogs, 5000);
+    fetchEsp32Status();
+    const i = setInterval(() => {
+      fetchLogs();
+      fetchEsp32Status();
+    }, 5000);
     return () => clearInterval(i);
   }, []);
 
-  const handlePinSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setPinError("");
-    setPinSuccess(false);
-    setIsLoading(true);
+  const handleDeleteSession = async (sessionId: number) => {
+    if (!confirm(`Are you sure you want to delete all entries from Session ${sessionId}?`)) {
+      return;
+    }
 
     try {
-      const res = await axios.post(`${backendUrl}/disable-buzzer`, { pin });
+      const res = await axios.delete(`${backendUrl}/logs/session/${sessionId}`);
       if (res.data.success) {
-        setPinSuccess(true);
-        setPin("");
-        setTimeout(() => setPinSuccess(false), 2000);
-      } else {
-        setPinError(res.data.message || "Invalid PIN");
+        await fetchLogs();
       }
-    } catch (error: any) {
-      setPinError(
-        error.response?.data?.message || "Failed to disable buzzer"
-      );
-    } finally {
-      setIsLoading(false);
+    } catch (error) {
+      console.error("Error deleting session:", error);
+      alert("Failed to delete session");
     }
+  };
+
+  const handleEsp32Control = async (action: "on" | "off") => {
+    try {
+      const res = await axios.post(`${backendUrl}/esp32/control`, { action });
+      if (res.data.success) {
+        setEsp32Enabled(res.data.esp32Enabled);
+      }
+    } catch (error) {
+      console.error("Error controlling ESP32:", error);
+      alert("Failed to control ESP32");
+    }
+  };
+
+  const toggleSession = (sessionId: number) => {
+    const newCollapsed = new Set(collapsedSessions);
+    if (newCollapsed.has(sessionId)) {
+      newCollapsed.delete(sessionId);
+    } else {
+      newCollapsed.add(sessionId);
+    }
+    setCollapsedSessions(newCollapsed);
   };
 
   const grouped = logs.reduce((acc: any, log) => {
@@ -85,54 +110,40 @@ export default function LogsPage({ onLogout, backendUrl }: LogsPageProps) {
                 Real-time pill detection logs
               </p>
             </div>
-            <button
-              onClick={onLogout}
-              className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors duration-200"
-            >
-              Logout
-            </button>
+            <div className="flex gap-3 items-center">
+              {/* ESP32 Control Button */}
+              <button
+                onClick={() => handleEsp32Control(esp32Enabled ? "off" : "on")}
+                className={`px-4 py-2 text-sm font-medium rounded-lg transition-colors duration-200 ${
+                  esp32Enabled
+                    ? "bg-red-500 text-white hover:bg-red-600"
+                    : "bg-green-500 text-white hover:bg-green-600"
+                }`}
+              >
+                {esp32Enabled ? "Turn ESP32 OFF" : "Turn ESP32 ON"}
+              </button>
+              <button
+                onClick={onLogout}
+                className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors duration-200"
+              >
+                Logout
+              </button>
+            </div>
           </div>
         </div>
       </header>
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {/* PIN Control Section */}
-        <div className="bg-white rounded-xl shadow-lg p-6 mb-8 border border-gray-200">
-          <h2 className="text-xl font-semibold text-gray-800 mb-4">
-            Buzzer Control
-          </h2>
-          <form onSubmit={handlePinSubmit} className="flex flex-col sm:flex-row gap-4">
-            <div className="flex-1">
-              <input
-                type="text"
-                value={pin}
-                onChange={(e) => {
-                  setPin(e.target.value);
-                  setPinError("");
-                }}
-                placeholder="Enter PIN to disable buzzer (1 second)"
-                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all duration-200 outline-none"
-                maxLength={10}
-              />
-            </div>
-            <button
-              type="submit"
-              disabled={isLoading || !pin.trim()}
-              className="px-6 py-3 bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-lg font-semibold hover:from-indigo-700 hover:to-purple-700 disabled:opacity-50 disabled:cursor-not-allowed transform hover:scale-[1.02] transition-all duration-200 shadow-md hover:shadow-lg whitespace-nowrap"
-            >
-              {isLoading ? "Processing..." : "Disable Buzzer"}
-            </button>
-          </form>
-          {pinError && (
-            <p className="mt-2 text-sm text-red-600 animate-fade-in">
-              {pinError}
-            </p>
-          )}
-          {pinSuccess && (
-            <p className="mt-2 text-sm text-green-600 animate-fade-in">
-              ✓ Buzzer disabled for 1 second
-            </p>
-          )}
+        {/* ESP32 Status Indicator */}
+        <div className="bg-white rounded-xl shadow-lg p-4 mb-8 border border-gray-200">
+          <div className="flex items-center gap-3">
+            <div className={`w-3 h-3 rounded-full ${esp32Enabled ? "bg-green-500" : "bg-red-500"}`}></div>
+            <span className="text-sm font-medium text-gray-700">
+              ESP32 Status: <span className={esp32Enabled ? "text-green-600" : "text-red-600"}>
+                {esp32Enabled ? "ONLINE" : "OFFLINE"}
+              </span>
+            </span>
+          </div>
         </div>
 
         {/* Logs Section */}
@@ -170,64 +181,94 @@ export default function LogsPage({ onLogout, backendUrl }: LogsPageProps) {
             </div>
           ) : (
             <div className="space-y-6">
-              {sortedSessions.map((session) => (
-                <div
-                  key={session}
-                  className="border border-gray-200 rounded-lg overflow-hidden hover:shadow-md transition-shadow duration-200"
-                >
-                  <div className="bg-gradient-to-r from-indigo-50 to-purple-50 px-4 py-3 border-b border-gray-200">
-                    <h3 className="font-semibold text-gray-800">
-                      Session {session}
-                    </h3>
-                    <p className="text-xs text-gray-600 mt-1">
-                      {grouped[session].length} detection(s)
-                    </p>
-                  </div>
-                  <div className="overflow-x-auto">
-                    <table className="w-full">
-                      <thead className="bg-gray-50">
-                        <tr>
-                          <th className="px-4 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">
-                            Cycle
-                          </th>
-                          <th className="px-4 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">
-                            Status
-                          </th>
-                          <th className="px-4 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">
-                            Timestamp
-                          </th>
-                        </tr>
-                      </thead>
-                      <tbody className="bg-white divide-y divide-gray-200">
-                        {grouped[session].map((log: Log, idx: number) => (
-                          <tr
-                            key={idx}
-                            className="hover:bg-gray-50 transition-colors duration-150"
+              {sortedSessions.map((session) => {
+                const sessionId = Number(session);
+                const isCollapsed = collapsedSessions.has(sessionId);
+                return (
+                  <div
+                    key={session}
+                    className="border border-gray-200 rounded-lg overflow-hidden hover:shadow-md transition-shadow duration-200"
+                  >
+                    <div className="bg-gradient-to-r from-indigo-50 to-purple-50 px-4 py-3 border-b border-gray-200">
+                      <div className="flex justify-between items-center">
+                        <div className="flex items-center gap-3">
+                          <button
+                            onClick={() => toggleSession(sessionId)}
+                            className="text-gray-600 hover:text-gray-800 transition-colors"
                           >
-                            <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900">
-                              {log.cycle}
-                            </td>
-                            <td className="px-4 py-3 whitespace-nowrap">
-                              <span
-                                className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
-                                  log.status === "DETECTED"
-                                    ? "bg-red-100 text-red-800"
-                                    : "bg-green-100 text-green-800"
-                                }`}
+                            {isCollapsed ? (
+                              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                              </svg>
+                            ) : (
+                              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                              </svg>
+                            )}
+                          </button>
+                          <h3 className="font-semibold text-gray-800">
+                            Cycle {session}
+                          </h3>
+                          <p className="text-xs text-gray-600">
+                            ({grouped[session].length} detection(s))
+                          </p>
+                        </div>
+                        <button
+                          onClick={() => handleDeleteSession(sessionId)}
+                          className="px-3 py-1 text-xs font-medium text-red-600 bg-red-50 border border-red-200 rounded-lg hover:bg-red-100 transition-colors duration-200"
+                        >
+                          Delete Cycle
+                        </button>
+                      </div>
+                    </div>
+                    {!isCollapsed && (
+                      <div className="overflow-x-auto">
+                        <table className="w-full">
+                          <thead className="bg-gray-50">
+                            <tr>
+                              <th className="px-4 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">
+                                Cycle
+                              </th>
+                              <th className="px-4 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">
+                                Status
+                              </th>
+                              <th className="px-4 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">
+                                Timestamp
+                              </th>
+                            </tr>
+                          </thead>
+                          <tbody className="bg-white divide-y divide-gray-200">
+                            {grouped[session].map((log: Log, idx: number) => (
+                              <tr
+                                key={idx}
+                                className="hover:bg-gray-50 transition-colors duration-150"
                               >
-                                {log.status}
-                              </span>
-                            </td>
-                            <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-600">
-                              {new Date(log.timestamp * 1000).toLocaleString()}
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
+                                <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900">
+                                  {log.cycle}
+                                </td>
+                                <td className="px-4 py-3 whitespace-nowrap">
+                                  <span
+                                    className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
+                                      log.status === "DETECTED"
+                                        ? "bg-red-100 text-red-800"
+                                        : "bg-green-100 text-green-800"
+                                    }`}
+                                  >
+                                    {log.status}
+                                  </span>
+                                </td>
+                                <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-600">
+                                  {new Date(log.timestamp * 1000).toLocaleString()}
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </div>
