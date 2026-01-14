@@ -2,70 +2,45 @@
 
 import { useEffect, useState } from "react";
 import axios from "axios";
+import LoginPage from "./components/LoginPage";
+import LogsPage from "./components/LogsPage";
 
 const BACKEND_URL = "https://dosemetic-backend-production.up.railway.app";
 
-type Log = {
-  session: number;
-  cycle: number;
-  status: string;
-  timestamp: number;
-};
-
 export default function Page() {
-  const [logs, setLogs] = useState<Log[]>([]);
-
-  const fetchLogs = async () => {
-    const res = await axios.get(`${BACKEND_URL}/logs`);
-    setLogs(res.data);
-  };
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    fetchLogs();
-    const i = setInterval(fetchLogs, 5000);
-    return () => clearInterval(i);
+    // Check if user is already logged in
+    const authStatus = localStorage.getItem("isAuthenticated");
+    if (authStatus === "true") {
+      setIsAuthenticated(true);
+    }
+    setIsLoading(false);
   }, []);
 
-  const grouped = logs.reduce((acc: any, log) => {
-    acc[log.session] = acc[log.session] || [];
-    acc[log.session].push(log);
-    return acc;
-  }, {});
+  const handleLogin = () => {
+    setIsAuthenticated(true);
+    localStorage.setItem("isAuthenticated", "true");
+  };
 
-  return (
-    <div className="p-6">
-      <h1 className="text-2xl font-bold mb-4">Dosematic Logs</h1>
+  const handleLogout = () => {
+    setIsAuthenticated(false);
+    localStorage.removeItem("isAuthenticated");
+  };
 
-      {Object.keys(grouped).length === 0 && <p>No data yet</p>}
+  if (isLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-100">
+        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-indigo-600"></div>
+      </div>
+    );
+  }
 
-      {Object.entries(grouped).map(([session, entries]: any) => (
-        <div key={session} className="mb-6">
-          <h2 className="font-semibold mb-2">
-            Iteration {session}
-          </h2>
+  if (!isAuthenticated) {
+    return <LoginPage onLogin={handleLogin} />;
+  }
 
-          <table className="border">
-            <thead>
-              <tr>
-                <th className="border px-2">Cycle</th>
-                <th className="border px-2">Status</th>
-                <th className="border px-2">Time</th>
-              </tr>
-            </thead>
-            <tbody>
-              {entries.map((l: Log, i: number) => (
-                <tr key={i}>
-                  <td className="border px-2">{l.cycle}</td>
-                  <td className="border px-2">{l.status}</td>
-                  <td className="border px-2">
-                    {new Date(l.timestamp * 1000).toLocaleString()}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      ))}
-    </div>
-  );
+  return <LogsPage onLogout={handleLogout} backendUrl={BACKEND_URL} />;
 }
