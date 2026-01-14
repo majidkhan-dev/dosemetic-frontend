@@ -33,8 +33,15 @@ export default function LogsPage({ onLogout, backendUrl }: LogsPageProps) {
     try {
       const res = await axios.get(`${backendUrl}/esp32/status`);
       setEsp32Enabled(res.data.esp32Enabled);
+      // Use isOnline from backend (based on heartbeat) instead of just esp32Enabled
+      // If esp32Enabled is false OR isOnline is false, show offline
+      if (!res.data.isOnline && res.data.esp32Enabled) {
+        // ESP32 is enabled but not responding - might be in deep sleep or disconnected
+        setEsp32Enabled(false); // Show as offline
+      }
     } catch (error) {
       console.error("Error fetching ESP32 status:", error);
+      setEsp32Enabled(false); // Show as offline on error
     }
   };
 
@@ -136,12 +143,17 @@ export default function LogsPage({ onLogout, backendUrl }: LogsPageProps) {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {/* ESP32 Status Indicator */}
         <div className="bg-white rounded-xl shadow-lg p-4 mb-8 border border-gray-200">
-          <div className="flex items-center gap-3">
-            <div className={`w-3 h-3 rounded-full ${esp32Enabled ? "bg-green-500" : "bg-red-500"}`}></div>
-            <span className="text-sm font-medium text-gray-700">
-              ESP32 Status: <span className={esp32Enabled ? "text-green-600" : "text-red-600"}>
-                {esp32Enabled ? "ONLINE" : "OFFLINE"}
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className={`w-3 h-3 rounded-full ${esp32Enabled ? "bg-green-500 animate-pulse" : "bg-red-500"}`}></div>
+              <span className="text-sm font-medium text-gray-700">
+                ESP32 Status: <span className={esp32Enabled ? "text-green-600" : "text-red-600"}>
+                  {esp32Enabled ? "ONLINE" : "OFFLINE / IN DEEP SLEEP"}
+                </span>
               </span>
+            </div>
+            <span className="text-xs text-gray-500">
+              {esp32Enabled ? "Active and monitoring" : "Powered off or disconnected"}
             </span>
           </div>
         </div>
