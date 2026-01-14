@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import axios from "axios";
 
 interface LogsPageProps {
@@ -22,6 +22,7 @@ export default function LogsPage({ onLogout, backendUrl }: LogsPageProps) {
   const [wakeUpCountdown, setWakeUpCountdown] = useState<number | null>(null); // Seconds remaining
   const [wakeUpStartTime, setWakeUpStartTime] = useState<number | null>(null); // When wake-up was initiated
   const [collapsedSessions, setCollapsedSessions] = useState<Set<number>>(new Set());
+  const wakeUpCountdownRef = useRef<number | null>(null); // Ref to track countdown for async functions
   
   const WAKE_UP_DURATION = 30; // 30 seconds for ESP32 to wake up
 
@@ -54,20 +55,33 @@ export default function LogsPage({ onLogout, backendUrl }: LogsPageProps) {
       setEsp32Enabled(res.data.esp32Enabled);
       // Only consider online if ESP32 is enabled AND online
       // If disabled, ESP32 may briefly wake up to check status but should be shown as offline
-      setIsOnline(res.data.esp32Enabled && res.data.isOnline);
+      // Don't update isOnline if we're in wake-up countdown - wait for it to complete
+      if (wakeUpCountdownRef.current === null || wakeUpCountdownRef.current <= 0) {
+        setIsOnline(res.data.esp32Enabled && res.data.isOnline);
+      }
     } catch (error) {
       console.error("Error fetching ESP32 status:", error);
-      setIsOnline(false);
+      if (wakeUpCountdownRef.current === null || wakeUpCountdownRef.current <= 0) {
+        setIsOnline(false);
+      }
     }
   };
 
-  // Clear countdown when ESP32 comes online or when disabled
+  // Clear countdown ONLY when ESP32 is actually online AND countdown has had time to run
+  // Don't clear immediately on isOnline change - let countdown run its course
   useEffect(() => {
-    if ((isOnline || !esp32Enabled) && wakeUpCountdown !== null) {
+    // Only clear if ESP32 is online AND countdown is very low (almost finished)
+    // This prevents clearing prematurely when ESP32 briefly wakes up
+    if (isOnline && esp32Enabled && wakeUpCountdown !== null && wakeUpCountdown <= 5) {
       setWakeUpCountdown(null);
       setWakeUpStartTime(null);
     }
   }, [isOnline, esp32Enabled, wakeUpCountdown]);
+
+  // Update ref whenever countdown changes
+  useEffect(() => {
+    wakeUpCountdownRef.current = wakeUpCountdown;
+  }, [wakeUpCountdown]);
 
   // Countdown timer for wake-up
   useEffect(() => {
@@ -78,6 +92,7 @@ export default function LogsPage({ onLogout, backendUrl }: LogsPageProps) {
     const timer = setInterval(() => {
       setWakeUpCountdown((prev) => {
         if (prev === null || prev <= 1) {
+          // Countdown finished - check if ESP32 is online now
           return null;
         }
         return prev - 1;
@@ -86,6 +101,15 @@ export default function LogsPage({ onLogout, backendUrl }: LogsPageProps) {
     
     return () => clearInterval(timer);
   }, [wakeUpCountdown]);
+
+  // When countdown finishes, check ESP32 status
+  useEffect(() => {
+    if (wakeUpCountdown === null && wakeUpStartTime !== null) {
+      // Countdown just finished, fetch status to see if ESP32 is online
+      fetchEsp32Status();
+      setWakeUpStartTime(null);
+    }
+  }, [wakeUpCountdown, wakeUpStartTime]);
 
   useEffect(() => {
     fetchLogs();
@@ -120,7 +144,8 @@ export default function LogsPage({ onLogout, backendUrl }: LogsPageProps) {
         setEsp32Enabled(res.data.esp32Enabled);
         
         if (action === "on") {
-          // Start wake-up countdown (but don't show seconds)
+          // Start wake-up countdown and ensure we show as offline initially
+          setIsOnline(false); // Reset to offline state
           setWakeUpCountdown(WAKE_UP_DURATION);
           setWakeUpStartTime(Date.now());
         } else {
