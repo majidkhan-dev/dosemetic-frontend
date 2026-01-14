@@ -17,8 +17,13 @@ type Log = {
 
 export default function LogsPage({ onLogout, backendUrl }: LogsPageProps) {
   const [logs, setLogs] = useState<Log[]>([]);
-  const [esp32Enabled, setEsp32Enabled] = useState(true);
+  const [esp32Enabled, setEsp32Enabled] = useState(false); // Backend command state
+  const [isOnline, setIsOnline] = useState(false); // Actual online status from heartbeat
+  const [wakeUpCountdown, setWakeUpCountdown] = useState<number | null>(null); // Seconds remaining
+  const [wakeUpStartTime, setWakeUpStartTime] = useState<number | null>(null); // When wake-up was initiated
   const [collapsedSessions, setCollapsedSessions] = useState<Set<number>>(new Set());
+  
+  const WAKE_UP_DURATION = 30; // 30 seconds for ESP32 to wake up
 
   // Format timestamp to Pakistan timezone (Asia/Karachi)
   const formatPakistanTime = (timestamp: number) => {
@@ -47,17 +52,38 @@ export default function LogsPage({ onLogout, backendUrl }: LogsPageProps) {
     try {
       const res = await axios.get(`${backendUrl}/esp32/status`);
       setEsp32Enabled(res.data.esp32Enabled);
-      // Use isOnline from backend (based on heartbeat) instead of just esp32Enabled
-      // If esp32Enabled is false OR isOnline is false, show offline
-      if (!res.data.isOnline && res.data.esp32Enabled) {
-        // ESP32 is enabled but not responding - might be in deep sleep or disconnected
-        setEsp32Enabled(false); // Show as offline
-      }
+      setIsOnline(res.data.isOnline);
     } catch (error) {
       console.error("Error fetching ESP32 status:", error);
-      setEsp32Enabled(false); // Show as offline on error
+      setIsOnline(false);
     }
   };
+
+  // Clear countdown when ESP32 comes online
+  useEffect(() => {
+    if (isOnline && wakeUpCountdown !== null) {
+      setWakeUpCountdown(null);
+      setWakeUpStartTime(null);
+    }
+  }, [isOnline, wakeUpCountdown]);
+
+  // Countdown timer for wake-up
+  useEffect(() => {
+    if (wakeUpCountdown === null || wakeUpCountdown <= 0) {
+      return;
+    }
+    
+    const timer = setInterval(() => {
+      setWakeUpCountdown((prev) => {
+        if (prev === null || prev <= 1) {
+          return null;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+    
+    return () => clearInterval(timer);
+  }, [wakeUpCountdown]);
 
   useEffect(() => {
     fetchLogs();
@@ -90,6 +116,17 @@ export default function LogsPage({ onLogout, backendUrl }: LogsPageProps) {
       const res = await axios.post(`${backendUrl}/esp32/control`, { action });
       if (res.data.success) {
         setEsp32Enabled(res.data.esp32Enabled);
+        
+        if (action === "on") {
+          // Start wake-up countdown
+          setWakeUpCountdown(WAKE_UP_DURATION);
+          setWakeUpStartTime(Date.now());
+        } else {
+          // Turning off - clear countdown
+          setWakeUpCountdown(null);
+          setWakeUpStartTime(null);
+          setIsOnline(false);
+        }
       }
     } catch (error) {
       console.error("Error controlling ESP32:", error);
@@ -134,14 +171,21 @@ export default function LogsPage({ onLogout, backendUrl }: LogsPageProps) {
             <div className="flex gap-3 items-center">
               {/* ESP32 Control Button */}
               <button
-                onClick={() => handleEsp32Control(esp32Enabled ? "off" : "on")}
+                onClick={() => handleEsp32Control(isOnline ? "off" : "on")}
+                disabled={wakeUpCountdown !== null && wakeUpCountdown > 0}
                 className={`px-4 py-2 text-sm font-medium rounded-lg transition-colors duration-200 ${
-                  esp32Enabled
+                  wakeUpCountdown !== null && wakeUpCountdown > 0
+                    ? "bg-gray-400 text-white cursor-not-allowed"
+                    : isOnline
                     ? "bg-red-500 text-white hover:bg-red-600"
                     : "bg-green-500 text-white hover:bg-green-600"
                 }`}
               >
-                {esp32Enabled ? "Turn ESP32 OFF" : "Turn ESP32 ON"}
+                {wakeUpCountdown !== null && wakeUpCountdown > 0
+                  ? `Waking up... (${wakeUpCountdown}s)`
+                  : isOnline
+                  ? "Turn ESP32 OFF"
+                  : "Turn ESP32 ON"}
               </button>
               <button
                 onClick={onLogout}
@@ -159,15 +203,35 @@ export default function LogsPage({ onLogout, backendUrl }: LogsPageProps) {
         <div className="bg-white rounded-xl shadow-lg p-4 mb-8 border border-gray-200">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
-              <div className={`w-3 h-3 rounded-full ${esp32Enabled ? "bg-green-500 animate-pulse" : "bg-red-500"}`}></div>
+              <div className={`w-3 h-3 rounded-full ${
+                isOnline 
+                  ? "bg-green-500 animate-pulse" 
+                  : wakeUpCountdown !== null && wakeUpCountdown > 0
+                  ? "bg-yellow-500 animate-pulse"
+                  : "bg-red-500"
+              }`}></div>
               <span className="text-sm font-medium text-gray-700">
-                ESP32 Status: <span className={esp32Enabled ? "text-green-600" : "text-red-600"}>
-                  {esp32Enabled ? "ONLINE" : "OFFLINE / IN DEEP SLEEP"}
+                ESP32 Status: <span className={
+                  isOnline 
+                    ? "text-green-600" 
+                    : wakeUpCountdown !== null && wakeUpCountdown > 0
+                    ? "text-yellow-600"
+                    : "text-red-600"
+                }>
+                  {isOnline 
+                    ? "ONLINE" 
+                    : wakeUpCountdown !== null && wakeUpCountdown > 0
+                    ? `WAKING UP (${wakeUpCountdown}s)`
+                    : "OFFLINE / IN DEEP SLEEP"}
                 </span>
               </span>
             </div>
             <span className="text-xs text-gray-500">
-              {esp32Enabled ? "Active and monitoring" : "Powered off or disconnected"}
+              {isOnline 
+                ? "Active and monitoring" 
+                : wakeUpCountdown !== null && wakeUpCountdown > 0
+                ? `Will turn on in ${wakeUpCountdown} seconds`
+                : "Powered off or disconnected"}
             </span>
           </div>
         </div>
