@@ -348,7 +348,8 @@ export default function LogsPage({ onLogout, backendUrl }: LogsPageProps) {
                         isCollapsed ? 'max-h-0 opacity-0' : 'max-h-[2000px] opacity-100'
                       }`}
                     >
-                      <div className="overflow-x-auto">
+                      {/* Desktop Table View */}
+                      <div className="hidden md:block overflow-x-auto">
                         <table className="w-full">
                           <thead className="bg-gray-50">
                             <tr>
@@ -390,6 +391,41 @@ export default function LogsPage({ onLogout, backendUrl }: LogsPageProps) {
                             ))}
                           </tbody>
                         </table>
+                      </div>
+
+                      {/* Mobile Card View */}
+                      <div className="md:hidden space-y-3 p-4">
+                        {grouped[session].map((log: Log, idx: number) => (
+                          <div
+                            key={idx}
+                            className="bg-white border border-gray-200 rounded-lg p-4 shadow-sm"
+                          >
+                            <div className="flex flex-col space-y-2">
+                              <div className="flex items-center justify-between">
+                                <span className="text-xs font-medium text-gray-500 uppercase">Cycle</span>
+                                <span className="text-sm font-semibold text-gray-900">{log.cycle}</span>
+                              </div>
+                              <div className="flex items-center justify-between">
+                                <span className="text-xs font-medium text-gray-500 uppercase">Status</span>
+                                <span
+                                  className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
+                                    log.status === "DETECTED"
+                                      ? "bg-red-100 text-red-800"
+                                      : "bg-green-100 text-green-800"
+                                  }`}
+                                >
+                                  {log.status}
+                                </span>
+                              </div>
+                              <div className="flex items-center justify-between">
+                                <span className="text-xs font-medium text-gray-500 uppercase">Timestamp</span>
+                                <span className="text-sm text-gray-600 text-right">
+                                  {formatPakistanTime(log.timestamp)}
+                                </span>
+                              </div>
+                            </div>
+                          </div>
+                        ))}
                       </div>
                     </div>
                   </div>
